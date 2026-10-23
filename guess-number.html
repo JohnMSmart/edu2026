@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guess the Number</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chewy&display=swap">
+<style>
+  :root {
+    --teal: #7fb0a3;
+    --teal-dark: #5a8f82;
+    --orange: #f39c12;
+    --bg: #fdfaf4;
+    --text: #2f3e3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Chewy", "Comic Sans MS", system-ui, sans-serif;
+    text-align: center;
+    padding: 16px;
+  }
+  .screen { display: none; max-width: 420px; width: 100%; }
+  .screen.active { display: block; }
+  h1 {
+    font-size: clamp(2.4rem, 10vw, 4rem);
+    color: var(--teal);
+    margin: 0 0 0.5rem;
+    letter-spacing: 2px;
+  }
+  .star { color: var(--orange); }
+  p { font-size: 1.3rem; margin: 0.5rem 0; }
+  input {
+    font: inherit;
+    font-size: 2rem;
+    width: 160px;
+    padding: 0.4rem;
+    text-align: center;
+    border: 4px solid var(--teal);
+    border-radius: 16px;
+    outline: none;
+    margin: 1rem 0;
+  }
+  input:focus { border-color: var(--orange); }
+  button {
+    font: inherit;
+    font-size: 1.6rem;
+    padding: 0.5rem 1.8rem;
+    color: #fff;
+    background: var(--teal);
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 5px 0 var(--teal-dark);
+  }
+  button:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--teal-dark); }
+  #hint { min-height: 2rem; color: var(--orange); font-size: 1.6rem; }
+  #win h1 { font-size: clamp(3rem, 14vw, 5rem); animation: bounce 0.8s ease infinite alternate; }
+  @keyframes bounce { to { transform: translateY(-12px); } }
+</style>
+</head>
+<body>
+
+<!-- Guess screen -->
+<div id="game" class="screen active">
+  <h1><span class="star">✶</span>GUESS<span class="star">✶</span></h1>
+  <p>I'm thinking of a number from 1 to 100.</p>
+  <form id="guessForm">
+    <input id="guessInput" type="number" min="1" max="100" required autofocus>
+    <br>
+    <button type="submit">Guess!</button>
+  </form>
+  <p id="hint"></p>
+  <p id="count"></p>
+</div>
+
+<!-- You win screen -->
+<div id="win" class="screen">
+  <h1><span class="star">✶</span>YOU WIN<span class="star">✶</span></h1>
+  <p id="winMessage"></p>
+  <button id="playAgain">Play again</button>
+</div>
+
+<script>
+  const SECRET_NUMBER = 82;
+  let guesses = 0;
+
+  const gameScreen = document.getElementById("game");
+  const winScreen = document.getElementById("win");
+  const input = document.getElementById("guessInput");
+  const hint = document.getElementById("hint");
+  const count = document.getElementById("count");
+
+  function showScreen(screen) {
+    gameScreen.classList.remove("active");
+    winScreen.classList.remove("active");
+    screen.classList.add("active");
+  }
+
+  document.getElementById("guessForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const number = Number(input.value);
+    guesses++;
+
+    // If number = secret number, go to the you win screen
+    if (number === SECRET_NUMBER) {
+      document.getElementById("winMessage").textContent =
+        `The secret number was ${SECRET_NUMBER}. You got it in ${guesses} ${guesses === 1 ? "guess" : "guesses"}!`;
+      showScreen(winScreen);
+      return;
+    }
+
+    hint.textContent = number < SECRET_NUMBER ? "Too low! Try higher." : "Too high! Try lower.";
+    count.textContent = `Guesses: ${guesses}`;
+    input.value = "";
+    input.focus();
+  });
+
+  document.getElementById("playAgain").addEventListener("click", () => {
+    guesses = 0;
+    hint.textContent = "";
+    count.textContent = "";
+    input.value = "";
+    showScreen(gameScreen);
+    input.focus();
+  });
+</script>
+</body>
+</html>
