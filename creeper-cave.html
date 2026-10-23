@@ -157,6 +157,27 @@
   };
   const POINTS = { gold: 10, copper: 1, diamond: 50 };
   const START_HEARTS = 3;
+  const CREEPER_NAMES = ["Zerwea", "Iopoliuyuo", "H of the É"];
+
+  // Silly messages. {name} is swapped for the creeper's name.
+  const JOKES = {
+    dig: ["You dug stone. The stone is not happy about it.", "Dig dig dig. Your arms are getting HUGE.",
+      "You dug stone. Somewhere, a rock family is sad.", "Stone removed. It's now a very nice hole."],
+    gold: ["+10 gold! You're basically a pirate now.", "+10 gold! Shiny!! SO shiny!!", "+10 gold! Don't spend it all on cookies."],
+    copper: ["+1 copper. One whole point. Try not to faint.", "+1 copper. It's gold's little cousin."],
+    diamond: ["+50 DIAMOND! You screamed so loud the bats moved out.", "+50 DIAMOND! You do a little dance."],
+    heart: ["Extra heart! You ate a suspicious cave sandwich.", "Extra heart! It was just lying there. Lucky!"],
+    lava: ["Ouch, lava! Your toes are toast. −1 heart.", "HOT HOT HOT! −1 heart.", "Lava is not a hot tub. −1 heart."],
+    bedrock: ["That's bedrock. You hit it and it laughed at you.", "Bedrock can't be dug. Not even with your teeth."],
+    bonk: ["BONK! You knocked out {name}.", "You bopped {name} on the nose. It ran home crying."],
+    hiss: ["{name} says: Ssssss… (that's creeper for \"hug time!\")", "{name} is hissing. That's never good.",
+      "{name} wants to give you an explosive hug!"],
+    boom: ["BOOM! {name} exploded. Rude! −1 heart.", "KABOOM! {name} went out with a bang. −1 heart."],
+  };
+  const joke = (kind, name = "") => {
+    const list = JOKES[kind];
+    return list[Math.floor(Math.random() * list.length)].replace("{name}", name);
+  };
 
   const LEGEND = [
     ["$", `Gold ore. Dig it for 10 points (×${LEVEL.gold})`],
@@ -169,7 +190,7 @@
     ["_", "Bedrock, the edge of the world. Can't be dug"],
     ['":!', "A creeper's warning. It hisses and flashes before it explodes"],
     ["^", `Lava. Touching it costs a heart (×${LEVEL.lava} pool)`],
-    ["fff", `Creepers (×${LEVEL.creepers}). Hit them head-on, but watch the corners`],
+    ["fff", `Creepers (×${LEVEL.creepers}): ${CREEPER_NAMES.join(", ")}. Hit them head-on, but watch the corners`],
   ];
   document.getElementById("legendList").innerHTML = LEGEND
     .map(([sym, text]) => `<li><span class="sym">${sym}</span><span>${text}</span></li>`)
@@ -220,7 +241,7 @@
       do { p = inside(); tries++; }
       while ((dist(p, player) < 6 || creepers.some((c) => c.x === p.x && c.y === p.y)) && tries < 100);
       carve(p.x, p.y); carve(p.x - 1, p.y); carve(p.x + 1, p.y);
-      creepers.push({ x: p.x, y: p.y, fuse: false });
+      creepers.push({ x: p.x, y: p.y, fuse: false, name: CREEPER_NAMES[i % CREEPER_NAMES.length] });
     }
     const hasCreeper = (x, y) => creepers.some((c) => c.x === x && c.y === y);
 
@@ -277,7 +298,7 @@
       found: { gold: 0, copper: 0, diamond: 0 },
       score: 0,
       status: "play",
-      message: "Find all the ores. Watch out for creepers!",
+      message: `Find all the ores. ${CREEPER_NAMES.join(", ")} are looking for hugs.`,
     };
     document.getElementById("overlay").hidden = true;
     render();
@@ -304,27 +325,27 @@
 
     if (creeper) {
       state.creepers = state.creepers.filter((c) => c !== creeper);
-      messages.push("You knocked out a creeper!");
+      messages.push(joke("bonk", creeper.name));
     } else if (tile === "bedrock") {
-      state.message = "That's bedrock. It can't be dug.";
+      state.message = joke("bedrock");
       render();
       return; // no turn used
     } else if (tile === "lava") {
-      hurt(messages, "Ouch, lava! −1 heart.");
+      hurt(messages, joke("lava"));
     } else if (tile === "stone") {
       grid[y][x] = "air";
-      messages.push("You dug stone.");
+      messages.push(joke("dig"));
     } else if (ORES.includes(tile)) {
       grid[y][x] = "air";
       state.found[tile]++;
       state.score += POINTS[tile];
-      messages.push(`+${POINTS[tile]} ${tile}!`);
+      messages.push(joke(tile));
     } else {
       player.x = x; player.y = y;
       if (tile === "heart") {
         grid[y][x] = "air";
         state.hearts++;
-        messages.push("Extra heart!");
+        messages.push(joke("heart"));
       }
     }
 
@@ -346,7 +367,7 @@
       if (state.turn % LEVEL.creeperSpeed === 0) stepToward(c);
       if (touching(c)) {
         c.fuse = true;
-        messages.push("Ssss… a creeper is about to explode!");
+        messages.push(joke("hiss", c.name));
       }
     }
   }
@@ -378,7 +399,7 @@
       for (let dx = -1; dx <= 1; dx++)
         if (state.grid[c.y + dy][c.x + dx] === "stone") state.grid[c.y + dy][c.x + dx] = "air";
     boom = { x: c.x, y: c.y, until: Date.now() + 500 };
-    hurt(messages, "BOOM! A creeper exploded. −1 heart.");
+    hurt(messages, joke("boom", c.name));
   }
 
   function showEnd() {
@@ -387,8 +408,8 @@
     overlay.className = "overlay " + (won ? "win" : "lose");
     document.getElementById("overlayTitle").textContent = won ? "YOU WIN" : "GAME OVER";
     document.getElementById("overlayText").textContent = won
-      ? `You mined every ore in ${state.turn} turns. Score: ${state.score}`
-      : `Score: ${state.score}. The creepers got you this time.`;
+      ? `You mined every ore in ${state.turn} turns. Score: ${state.score}. The creepers are writing you an angry letter.`
+      : `Score: ${state.score}. You've been turned into confetti. 🎉 Try again!`;
     overlay.hidden = false;
     document.getElementById("playAgain").focus();
   }
