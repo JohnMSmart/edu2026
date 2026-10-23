@@ -88,7 +88,12 @@
 </div>
 
 <script>
-  const SECRET_NUMBER = 82;
+  // Pick a new secret number from 1 to 100
+  function randomNumber() {
+    return Math.floor(Math.random() * 100) + 1;
+  }
+
+  let secretNumber = randomNumber();
   let guesses = 0;
 
   const gameScreen = document.getElementById("game");
@@ -109,14 +114,14 @@
     guesses++;
 
     // If number = secret number, go to the you win screen
-    if (number === SECRET_NUMBER) {
+    if (number === secretNumber) {
       document.getElementById("winMessage").textContent =
-        `The secret number was ${SECRET_NUMBER}. You got it in ${guesses} ${guesses === 1 ? "guess" : "guesses"}!`;
+        `The secret number was ${secretNumber}. You got it in ${guesses} ${guesses === 1 ? "guess" : "guesses"}!`;
       showScreen(winScreen);
       return;
     }
 
-    hint.textContent = number < SECRET_NUMBER ? "Too low! Try higher." : "Too high! Try lower.";
+    hint.textContent = number < secretNumber ? "Too low! Try higher." : "Too high! Try lower.";
     count.textContent = `Guesses: ${guesses}`;
     input.value = "";
     input.focus();
@@ -124,6 +129,7 @@
 
   document.getElementById("playAgain").addEventListener("click", () => {
     guesses = 0;
+    secretNumber = randomNumber();
     hint.textContent = "";
     count.textContent = "";
     input.value = "";
