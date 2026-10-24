@@ -134,6 +134,7 @@
       <button id="right" aria-label="Right">▶</button>
       <button id="down" aria-label="Down">▼</button>
     </div>
+    <button class="play-btn" id="suitButton" hidden>Take off suit</button>
     <button class="play-btn" id="startOver">Start over</button>
   </div>
   <p class="hint">Arrow keys or WASD to move. Walk into blocks to dig them. Walk into a creeper to bonk it. Dig every ore to finish the level.</p>
@@ -149,8 +150,7 @@
   const WINNERS = "Claire and Xander";
   const LAST_LEVEL = 8;
   const START_HEARTS = 4;
-  const SUIT_AT_POINTS = 10n; // score this many points in a level and the Booba Root Suit goes on
-  const SUIT_TURNS = 15;
+  const SUIT_AT_POINTS = 10n; // score this many points and you get the Booba Root Suit (it never breaks)
   // 1 million × 1 billion × 1 trillion × 1 quintillion = 10 to the power of 45
   const RAINBOW_POINTS = 10n ** 45n;
   const POINTS = { gold: 10n, copper: 1n, diamond: 50n, rainbow: RAINBOW_POINTS };
@@ -219,7 +219,9 @@
       const c = spawnCreeper(4, "Baby Boom");
       m.push(c ? "😱 A baby creeper jumped out! It's small but it still explodes." : "The chest was empty. Weird.");
     } },
-    { weight: 1, open: (m) => putOnSuit(m) },
+    { weight: 1, open: (m) => state.hasSuit
+      ? m.push("🌳 Another Booba Root Suit! You already have one, so you wear this one as a hat.")
+      : putOnSuit(m) },
     { weight: 1, open: (m) => { state.discoTurns = 6; state.creepers.forEach((c) => (c.fuse = false));
       m.push("🪩 DISCO TIME! The creepers are too busy dancing to chase you for 6 turns."); } },
     { weight: 1, open: (m) => { state.score += 1n; m.push("🐔 A chicken pops out, says BAWK, and runs off. +1 point for the chicken."); } },
@@ -233,7 +235,7 @@
     ["heart", "Heart. Walk over it for an extra life"],
     ["chest", "Chest. Dig it for a surprise… but some are CREEPER CHESTS that explode!"],
     ["tnt", "TNT. Dig it to light it, then RUN. It blows up 3 turns later and takes out creepers too"],
-    ["suit", `Booba Root Suit. Goes on by itself when you score ${SUIT_AT_POINTS} points in a level. For ${SUIT_TURNS} turns: infinite hearts, smash bedrock, never hungry, and creepers think you're a tree stump`],
+    ["suit", `Booba Root Suit. Goes on by itself when you score ${SUIT_AT_POINTS} points. Never breaks! Press E or the suit button to take it off and put it on. While it's on: infinite hearts, smash bedrock, never hungry, and creepers think you're a tree stump`],
     ["bedrock", "Bedrock. Can't be dug… unless you're wearing the Booba Root Suit"],
     ["lava", "Lava. Touching it costs a heart"],
     ["creeper", "Creeper. Explodes if it stays next to you. Gets faster and starts digging in later levels"],
@@ -347,7 +349,7 @@
     return { grid, player, creepers };
   }
 
-  function startLevel(level, hearts, score) {
+  function startLevel(level, hearts, score, suit = { has: false, on: false }) {
     const cfg = levelSettings(level);
     let world = null;
     while (!world) world = tryWorld(cfg);
@@ -361,8 +363,8 @@
       shield: false,
       speedTurns: 0,
       discoTurns: 0,
-      suitTurns: 0,
-      suitEarned: false,
+      hasSuit: suit.has,
+      suitOn: suit.on,
       tnts: [],
       turn: 0,
       found: { gold: 0, copper: 0, diamond: 0, rainbow: 0 },
@@ -370,6 +372,8 @@
       usedNames: world.creepers.map((c) => c.name),
       message: level === 1
         ? `Welcome, ${PLAYER_NAME}! Dig every ore to finish the level. Score ${SUIT_AT_POINTS} points to get the Booba Root Suit!`
+        : suit.has && !suit.on
+          ? `Level ${level}! Your Booba Root Suit is in your backpack. Press E to put it on.`
         : level === LAST_LEVEL
           ? "🌈 LEVEL 8, THE LAST ONE! Rainbow ore is hiding somewhere in this cave…"
           : `Level ${level}! The creepers are getting angrier…`,
@@ -390,7 +394,7 @@
   };
 
   function hurt(amount, messages, text) {
-    if (state.suitTurns > 0) {
+    if (state.suitOn) {
       messages.push(text + " …but you have INFINITE HEARTS in the Booba Root Suit! ∞");
       return;
     }
@@ -405,9 +409,21 @@
   }
 
   function putOnSuit(messages) {
-    state.suitTurns = SUIT_TURNS;
+    state.hasSuit = true;
+    state.suitOn = true;
     state.creepers.forEach((c) => (c.fuse = false));
-    messages.push(`🌳 The BOOBA ROOT SUIT is on! For ${SUIT_TURNS} turns: infinite hearts, you can smash bedrock, you'll never be hungry, and creepers think you're a tree stump.`);
+    messages.push("🌳 You got the BOOBA ROOT SUIT! It never breaks. While it's on: infinite hearts, you can smash bedrock, you'll never be hungry, and creepers think you're a tree stump. Press E to take it off or put it on.");
+  }
+
+  // Taking the suit off or putting it back on doesn't use up a turn
+  function toggleSuit() {
+    if (state.status !== "play" || !state.hasSuit) return;
+    state.suitOn = !state.suitOn;
+    if (state.suitOn) state.creepers.forEach((c) => (c.fuse = false));
+    state.message = state.suitOn
+      ? "🌳 Booba Root Suit ON. You are now a very convincing tree stump."
+      : "You took off the Booba Root Suit. The creepers can see you now. Careful!";
+    render();
   }
 
   function move(dx, dy) {
@@ -425,7 +441,7 @@
       render();
       return; // no turn used
     } else if (tile === "bedrock") {
-      if (isInside(x, y) && state.suitTurns > 0) {
+      if (isInside(x, y) && state.suitOn) {
         grid[y][x] = "air";
         messages.push(joke("smash"));
       } else {
@@ -498,13 +514,9 @@
     creepersTurn(messages);
 
     if (state.discoTurns > 0 && --state.discoTurns === 0) messages.push("The disco is over. The creepers remember they hate you.");
-    if (state.suitTurns > 0 && --state.suitTurns === 0) messages.push("Your Booba Root Suit fell apart. Careful, your hearts count again!");
 
-    // The Booba Root Suit goes on by itself the first time you score enough points in a level
-    if (!state.suitEarned && state.score - state.levelStartScore >= SUIT_AT_POINTS && state.status === "play") {
-      state.suitEarned = true;
-      putOnSuit(messages);
-    }
+    // The Booba Root Suit goes on by itself once you've scored enough points
+    if (!state.hasSuit && state.score >= SUIT_AT_POINTS && state.status === "play") putOnSuit(messages);
 
     const cfg = state.cfg;
     if (state.status === "play" && state.turn % cfg.spawnEvery === 0 && state.creepers.length < cfg.maxCreepers) {
@@ -525,7 +537,7 @@
       if (!state.creepers.includes(c)) continue; // already blown up
       if (state.discoTurns > 0) { c.fuse = false; continue; }
       if (c.stun > 0) { c.stun--; continue; }
-      if (state.suitTurns > 0) { c.fuse = false; wander(c); continue; }
+      if (state.suitOn) { c.fuse = false; wander(c); continue; }
       if (c.fuse) {
         if (reach(c, state.player) <= (c.charged ? 2 : 1)) { creeperBoom(c, messages); continue; }
         c.fuse = false;
@@ -668,13 +680,13 @@
       text.textContent = `Score: ${formatScore(score)}. Hearts: ${state.hearts}. Level ${level + 1} will be harder…` +
         (level + 1 === LAST_LEVEL ? " and it has RAINBOW ORE! 🌈" : "");
       button.textContent = `Go to level ${level + 1}`;
-      overlayAction = () => startLevel(level + 1, state.hearts, state.score);
+      overlayAction = () => startLevel(level + 1, state.hearts, state.score, { has: state.hasSuit, on: state.suitOn });
     } else {
       overlay.className = "overlay lose";
       title.textContent = "GAME OVER";
       text.textContent = `${PLAYER_NAME} has been turned into confetti on level ${level}. 🎉`;
       button.textContent = `Try level ${level} again`;
-      overlayAction = () => startLevel(level, START_HEARTS, state.levelStartScore);
+      overlayAction = () => startLevel(level, START_HEARTS, state.levelStartScore, { has: state.hasSuit, on: state.suitOn });
     }
     overlay.hidden = false;
     button.focus();
@@ -799,7 +811,7 @@
       }
     });
 
-    if (state.suitTurns > 0) sprite(ctx, player.x * TILE, player.y * TILE, ROOT_SUIT, PALETTES.suit);
+    if (state.suitOn) sprite(ctx, player.x * TILE, player.y * TILE, ROOT_SUIT, PALETTES.suit);
     else sprite(ctx, player.x * TILE, player.y * TILE, STEVE, PALETTES.player);
     if (state.shield) {
       ctx.strokeStyle = "#5ad8ff";
@@ -820,7 +832,7 @@
 
     const { cfg, found } = state;
     const powers = [];
-    if (state.suitTurns > 0) powers.push(`Root Suit ${state.suitTurns}`);
+    if (state.hasSuit) powers.push(`Root Suit ${state.suitOn ? "ON" : "OFF"}`);
     if (state.shield) powers.push("Shield");
     if (state.speedTurns > 0) powers.push(`Speed ${state.speedTurns}`);
     if (state.discoTurns > 0) powers.push(`Disco ${state.discoTurns}`);
@@ -828,11 +840,14 @@
     if (cfg.rainbow) ores.push(`Rainbow ${found.rainbow}/${cfg.rainbow}`);
 
     document.getElementById("levelLabel").textContent = `Level ${state.level}/${LAST_LEVEL}`;
-    document.getElementById("hearts").textContent = state.suitTurns > 0 ? "♥ ∞" : "♥".repeat(Math.max(state.hearts, 0)) || "—";
+    document.getElementById("hearts").textContent = state.suitOn ? "♥ ∞" : "♥".repeat(Math.max(state.hearts, 0)) || "—";
     document.getElementById("powers").textContent = powers.join(" · ");
     document.getElementById("oreCounts").textContent = ores.join("  ");
     document.getElementById("score").textContent = `Score ${formatScore(state.score)}`;
     document.getElementById("message").textContent = state.message;
+    const suitButton = document.getElementById("suitButton");
+    suitButton.hidden = !state.hasSuit;
+    suitButton.textContent = state.suitOn ? "Take off suit" : "Put on suit";
   }
 
   // Picture key under the game
@@ -855,6 +870,7 @@
     w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
   };
   document.addEventListener("keydown", (event) => {
+    if (event.key.toLowerCase() === "e") { toggleSuit(); return; }
     const dir = KEYS[event.key] || KEYS[event.key.toLowerCase()];
     if (!dir) return;
     event.preventDefault();
@@ -863,6 +879,7 @@
   [["up", 0, -1], ["down", 0, 1], ["left", -1, 0], ["right", 1, 0]].forEach(([id, dx, dy]) =>
     document.getElementById(id).addEventListener("click", () => move(dx, dy)));
   document.getElementById("overlayButton").addEventListener("click", () => overlayAction && overlayAction());
+  document.getElementById("suitButton").addEventListener("click", toggleSuit);
   document.getElementById("startOver").addEventListener("click", () => startLevel(1, START_HEARTS, 0n));
 
   setInterval(() => { blink = !blink; render(); }, 300);
