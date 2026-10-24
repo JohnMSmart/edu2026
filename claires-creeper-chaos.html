@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Claire's Creeper Chaos</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=VT323&display=swap">
+<style>
+  /* Layout: one narrow column — HUD, cave, controls, then a picture key. Single dark "cave" look on purpose. */
+  :root {
+    --bg: #1b1820;
+    --panel: #29252f;
+    --edge: #433d4c;
+    --text: #ece6f2;
+    --muted: #a69daf;
+    --grass: #6cbf3f;
+    --gold: #f7d33b;
+    --pink: #ff7ac8;
+    --danger: #ff5a3c;
+    --charged: #5ad8ff;
+    --pixel: "Silkscreen", "Courier New", monospace;
+    --body: "VT323", "Courier New", monospace;
+    color-scheme: dark;
+  }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 20px;
+    font-variant-ligatures: none;
+    padding-block: 20px 32px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  h1 {
+    font-family: var(--pixel);
+    font-size: clamp(1.5rem, 7.5vw, 2.3rem);
+    line-height: 1.1;
+    color: var(--grass);
+    margin: 0;
+    text-align: center;
+    text-shadow: 3px 3px 0 #2f5a1c;
+    text-wrap: balance;
+  }
+  h1 .name { color: var(--pink); text-shadow: 3px 3px 0 #7a2a5c; }
+  .sub { margin: -6px 0 0; text-align: center; color: var(--muted); }
+
+  .hud {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 14px;
+    font-family: var(--pixel); font-size: 0.75rem;
+    background: var(--panel); border: 3px solid var(--edge); padding: 8px 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .hud .hearts { color: var(--danger); letter-spacing: 2px; }
+  .hud .powers { color: var(--charged); }
+
+  .stage { position: relative; }
+  canvas#cave {
+    display: block; width: 100%; max-width: 100%; aspect-ratio: 14 / 10;
+    image-rendering: pixelated; border: 3px solid #111;
+  }
+  .overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px; text-align: center;
+    background: rgba(10, 8, 12, 0.84); padding: 16px;
+  }
+  .overlay h2 { font-family: var(--pixel); font-size: clamp(1.5rem, 8vw, 2.4rem); margin: 0; }
+  .overlay p { margin: 0; font-size: 1.3rem; max-width: 32ch; }
+  .overlay.win h2 { color: var(--gold); }
+  .overlay.lose h2 { color: var(--danger); }
+
+  #message { min-height: 2.8em; margin: 0; text-align: center; font-size: 1.3rem; color: var(--gold); }
+
+  .controls { display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 4px; }
+  .dpad button:nth-child(1) { grid-area: 1 / 2; }
+  .dpad button:nth-child(2) { grid-area: 2 / 1; }
+  .dpad button:nth-child(3) { grid-area: 2 / 3; }
+  .dpad button:nth-child(4) { grid-area: 3 / 2; }
+  button {
+    font-family: var(--pixel); font-size: 1rem; color: var(--text);
+    background: #6b6b6b; border: 3px solid #111;
+    box-shadow: inset -3px -3px 0 #4a4a4a, inset 3px 3px 0 #949494;
+    cursor: pointer; touch-action: manipulation; padding: 6px 12px;
+  }
+  button:active { box-shadow: inset 3px 3px 0 #4a4a4a, inset -3px -3px 0 #949494; }
+  button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+  .play-btn { background: #4f8f2c; box-shadow: inset -3px -3px 0 #355f1d, inset 3px 3px 0 #7cc24f; }
+  .hint { color: var(--muted); margin: 0; text-align: center; }
+
+  .key { background: var(--panel); border: 3px solid var(--edge); padding: 12px 14px; }
+  .key h2 { font-family: var(--pixel); font-size: 0.9rem; margin: 0 0 10px; color: var(--grass); }
+  .key ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .key li { display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: center; min-width: 0; }
+  .key canvas { width: 32px; height: 32px; image-rendering: pixelated; }
+</style>
+
+<main>
+  <h1><span class="name">Claire's</span> Creeper Chaos</h1>
+  <p class="sub">Creeper Cave, but the creepers are angrier and the chests are weird.</p>
+
+  <div class="hud" aria-live="polite">
+    <span class="hearts" id="hearts"></span>
+    <span class="powers" id="powers"></span>
+    <span id="goldCount"></span>
+    <span id="copperCount"></span>
+    <span id="diamondCount"></span>
+    <span id="score"></span>
+  </div>
+
+  <div class="stage">
+    <canvas id="cave" width="224" height="160" aria-label="Cave map"></canvas>
+    <div class="overlay" id="overlay" hidden>
+      <h2 id="overlayTitle"></h2>
+      <p id="overlayText"></p>
+      <button class="play-btn" id="playAgain">Play again</button>
+    </div>
+  </div>
+
+  <p id="message"></p>
+
+  <div class="controls">
+    <div class="dpad">
+      <button id="up" aria-label="Up">▲</button>
+      <button id="left" aria-label="Left">◀</button>
+      <button id="right" aria-label="Right">▶</button>
+      <button id="down" aria-label="Down">▼</button>
+    </div>
+    <button class="play-btn" id="newWorld">New world</button>
+  </div>
+  <p class="hint">Arrow keys or WASD to move. Walk into blocks to dig them. Walk into a creeper to bonk it. Dig every ore to win.</p>
+
+  <section class="key">
+    <h2>What's in the cave</h2>
+    <ul id="keyList"></ul>
+  </section>
+</main>
+
+<script>
+  const PLAYER_NAME = "Claire";
+  const LEVEL = { gold: 6, copper: 3, diamond: 1, hearts: 2, lava: 2, creepers: 3, tnt: 3, chests: 4 };
+  const POINTS = { gold: 10, copper: 1, diamond: 50 };
+  const START_HEARTS = 4;
+  const SPAWN_EVERY = 25;   // a new creeper shows up every 25 turns...
+  const MAX_CREEPERS = 6;   // ...up to this many at once
+  const NAMES = ["Zerwea", "Iopoliuyuo", "H of the É", "Mr. Hissington", "Kevin", "Boom Boom Bob", "Sir Explodes-a-Lot", "Gerald"];
+
+  // Silly messages. {name} is swapped for a creeper's name.
+  const JOKES = {
+    start: [`Welcome, ${PLAYER_NAME}! Sparky is charged up and VERY grumpy today.`],
+    dig: ["You dug stone. The stone is not happy about it.", `Dig dig dig. ${PLAYER_NAME}'s arms are getting HUGE.`,
+      "You dug stone. Somewhere, a rock family is sad.", "Stone removed. It's now a very nice hole."],
+    gold: ["+10 gold! You're basically a pirate now.", "+10 gold! Shiny!! SO shiny!!", "+10 gold! Don't spend it all on cookies."],
+    copper: ["+1 copper. One whole point. Try not to faint.", "+1 copper. It's gold's little cousin."],
+    diamond: ["+50 DIAMOND! You screamed so loud the bats moved out.", `+50 DIAMOND! ${PLAYER_NAME} does a little dance.`],
+    heart: ["Extra heart! You ate a suspicious cave sandwich.", "Extra heart! It was just lying there. Lucky!"],
+    lava: ["Ouch, lava! Your toes are toast.", "HOT HOT HOT!", "Lava is not a hot tub."],
+    bedrock: ["That's bedrock. You hit it and it laughed at you.", "Bedrock can't be dug. Not even with your teeth."],
+    bonk: ["BONK! You knocked out {name}.", "You bopped {name} on the nose. It ran home crying.", "{name} got bonked into next week."],
+    hiss: ["{name} says: Ssssss… (that's creeper for \"hug time!\")", "{name} is hissing. That's never good.",
+      "{name} wants to give you an explosive hug!"],
+    chargedHiss: ["⚡ {name} is crackling with lightning! Its boom is HUGE. Bonk it or run!"],
+    boom: ["BOOM! {name} exploded. Rude!", "KABOOM! {name} went out with a bang."],
+    spawn: ["The cave rumbles… {name} has joined the party.", "Uh oh. {name} just crawled out of the wall.",
+      "{name} heard there was a party down here."],
+    dig_creeper: ["You hear scratching… a creeper is digging toward you!"],
+  };
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+  const joke = (kind, name = "") => pick(JOKES[kind]).replace("{name}", name);
+
+  // What can pop out of a chest. Bigger weight = more likely.
+  const SURPRISES = [
+    { weight: 2, open: (m) => { state.shield = true; m.push("🛡 A shield! It will block the next thing that hurts you."); } },
+    { weight: 2, open: (m) => { state.speedTurns = 20; m.push("⛏ A speedy pickaxe! For 20 turns you dig AND move in one go."); } },
+    { weight: 2, open: (m) => { state.hearts++; m.push("🎂 Cake! +1 heart. The cake was not a lie."); } },
+    { weight: 1, open: (m) => { state.hearts += 2; m.push("🍎 A GOLDEN APPLE! +2 hearts. Fancy."); } },
+    { weight: 1, open: (m) => teleport(m) },
+    { weight: 2, open: (m) => {
+      const c = spawnCreeper(4, "Baby Boom");
+      m.push(c ? "😱 SURPRISE! A baby creeper jumped out. It's small but still explodes." : "The chest was empty. Weird.");
+    } },
+    { weight: 1, open: (m) => { state.discoTurns = 6; state.creepers.forEach((c) => (c.fuse = false));
+      m.push("🪩 DISCO TIME! The creepers are too busy dancing to chase you for 6 turns."); } },
+    { weight: 1, open: (m) => { state.score += 1; m.push("🐔 A chicken pops out, says BAWK, and runs off. +1 point for the chicken."); } },
+  ];
+
+  const KEY = [
+    ["gold", "Gold ore. Dig it for 10 points"],
+    ["copper", "Copper ore. Dig it for 1 point"],
+    ["diamond", "Diamond. Dig it for 50 points"],
+    ["heart", "Heart. Walk over it for an extra life"],
+    ["chest", "Mystery chest. Dig it open for a surprise… good or bad!"],
+    ["tnt", "TNT. Dig it to light it, then RUN. It blows up 3 turns later and takes out creepers too"],
+    ["lava", "Lava. Touching it costs a heart"],
+    ["creeper", "Creeper. Moves every turn, can dig through stone, and explodes if it stays next to you"],
+    ["charged", "Charged creeper (Sparky). Needs 2 bonks and has a giant 2-heart explosion"],
+    ["player", `${PLAYER_NAME}, the miner`],
+  ];
+
+  const COLS = 14, ROWS = 10, TILE = 16;
+  const ORES = ["gold", "copper", "diamond"];
+  const DIGGABLE = ["stone", "gold", "copper", "diamond", "tnt", "chest"];
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const canvas = document.getElementById("cave");
+  const ctx = canvas.getContext("2d");
+
+  let state;
+  let blink = false;
+  let booms = [];
+
+  // ---------- World building ----------
+
+  const rand = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+  const inside = () => ({ x: rand(1, COLS - 2), y: rand(1, ROWS - 2) });
+  const isInside = (x, y) => x > 0 && y > 0 && x < COLS - 1 && y < ROWS - 1;
+  const dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  const reach = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)); // includes diagonals
+  const shuffle = (list) => list.sort(() => Math.random() - 0.5);
+
+  function makeCreeper(x, y, name, charged = false) {
+    return { x, y, name, charged, hp: charged ? 2 : 1, fuse: false, stun: 0 };
+  }
+
+  function tryWorld() {
+    const grid = [];
+    for (let y = 0; y < ROWS; y++) {
+      grid.push([]);
+      for (let x = 0; x < COLS; x++) grid[y].push(isInside(x, y) ? "stone" : "bedrock");
+    }
+    const carve = (x, y) => { if (isInside(x, y)) grid[y][x] = "air"; };
+
+    for (let i = 0; i < 4; i++) {
+      let p = inside();
+      for (let s = 0; s < 10; s++) {
+        carve(p.x, p.y);
+        const [dx, dy] = pick(DIRS);
+        if (isInside(p.x + dx, p.y + dy)) p = { x: p.x + dx, y: p.y + dy };
+      }
+    }
+
+    const player = inside();
+    carve(player.x, player.y);
+    DIRS.forEach(([dx, dy]) => carve(player.x + dx, player.y + dy));
+
+    const creepers = [];
+    const names = shuffle([...NAMES]);
+    for (let i = 0; i < LEVEL.creepers; i++) {
+      let p, tries = 0;
+      do { p = inside(); tries++; }
+      while ((dist(p, player) < 7 || creepers.some((c) => c.x === p.x && c.y === p.y)) && tries < 200);
+      carve(p.x, p.y); carve(p.x - 1, p.y); carve(p.x + 1, p.y);
+      creepers.push(i === 0 ? makeCreeper(p.x, p.y, "Sparky", true) : makeCreeper(p.x, p.y, names[i]));
+    }
+    const hasCreeper = (x, y) => creepers.some((c) => c.x === x && c.y === y);
+
+    for (let i = 0; i < LEVEL.lava; i++) {
+      let p = inside();
+      for (let s = 0; s < 3; s++) {
+        if (dist(p, player) >= 3 && !hasCreeper(p.x, p.y)) grid[p.y][p.x] = "lava";
+        const [dx, dy] = pick(DIRS);
+        if (isInside(p.x + dx, p.y + dy)) p = { x: p.x + dx, y: p.y + dy };
+      }
+    }
+
+    const spots = (kind) => {
+      const list = [];
+      for (let y = 1; y < ROWS - 1; y++)
+        for (let x = 1; x < COLS - 1; x++)
+          if (grid[y][x] === kind && !hasCreeper(x, y) && dist({ x, y }, player) > 1) list.push({ x, y });
+      return shuffle(list);
+    };
+    const stone = spots("stone");
+    for (const kind of [...ORES, "tnt", "chest"])
+      for (let i = 0; i < LEVEL[kind === "tnt" ? "tnt" : kind === "chest" ? "chests" : kind]; i++) {
+        const p = stone.pop();
+        grid[p.y][p.x] = kind;
+      }
+    const open = spots("air").concat(stone);
+    for (let i = 0; i < LEVEL.hearts; i++) { const p = open.pop(); grid[p.y][p.x] = "heart"; }
+
+    // Make sure lava doesn't wall off anything you need
+    const seen = new Set([player.x + "," + player.y]);
+    const queue = [player];
+    while (queue.length) {
+      const p = queue.shift();
+      for (const [dx, dy] of DIRS) {
+        const x = p.x + dx, y = p.y + dy, key = x + "," + y;
+        if (!seen.has(key) && grid[y][x] !== "bedrock" && grid[y][x] !== "lava") { seen.add(key); queue.push({ x, y }); }
+      }
+    }
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++)
+        if ((ORES.includes(grid[y][x]) || grid[y][x] === "heart") && !seen.has(x + "," + y)) return null;
+
+    return { grid, player, creepers };
+  }
+
+  function newGame() {
+    let world = null;
+    while (!world) world = tryWorld();
+    state = {
+      ...world,
+      hearts: START_HEARTS,
+      shield: false,
+      speedTurns: 0,
+      discoTurns: 0,
+      tnts: [],
+      turn: 0,
+      found: { gold: 0, copper: 0, diamond: 0 },
+      score: 0,
+      status: "play",
+      usedNames: world.creepers.map((c) => c.name),
+      message: joke("start"),
+    };
+    booms = [];
+    document.getElementById("overlay").hidden = true;
+    render();
+  }
+
+  // ---------- Game rules ----------
+
+  const creeperAt = (x, y) => state.creepers.find((c) => c.x === x && c.y === y);
+  const tntAt = (x, y) => state.tnts.find((t) => t.x === x && t.y === y);
+  const isFree = (x, y) => {
+    const t = state.grid[y][x];
+    return (t === "air" || t === "heart") && !creeperAt(x, y) && !tntAt(x, y) &&
+      !(x === state.player.x && y === state.player.y);
+  };
+
+  function hurt(amount, messages, text) {
+    if (state.shield) {
+      state.shield = false;
+      messages.push(text + " …but your shield blocked it! 🛡");
+      return;
+    }
+    state.hearts -= amount;
+    messages.push(`${text} −${amount} heart${amount > 1 ? "s" : ""}.`);
+    if (state.hearts <= 0) state.status = "lost";
+  }
+
+  function move(dx, dy) {
+    if (state.status !== "play") return;
+    const { grid, player } = state;
+    const x = player.x + dx, y = player.y + dy;
+    const tile = grid[y][x];
+    const messages = [];
+    const creeper = creeperAt(x, y);
+
+    if (creeper) {
+      bonk(creeper, dx, dy, messages);
+    } else if (tntAt(x, y)) {
+      state.message = "That TNT is lit! Run away from it, don't hug it!";
+      render();
+      return; // no turn used
+    } else if (tile === "bedrock") {
+      state.message = joke("bedrock");
+      render();
+      return; // no turn used
+    } else if (tile === "lava") {
+      hurt(1, messages, joke("lava"));
+    } else if (DIGGABLE.includes(tile)) {
+      dig(x, y, tile, messages);
+      if (state.speedTurns > 0 && grid[y][x] === "air" && !tntAt(x, y)) { player.x = x; player.y = y; }
+    } else {
+      player.x = x; player.y = y;
+      if (tile === "heart") {
+        grid[y][x] = "air";
+        state.hearts++;
+        messages.push(joke("heart"));
+      }
+    }
+    endTurn(messages);
+  }
+
+  function dig(x, y, tile, messages) {
+    state.grid[y][x] = "air";
+    if (tile === "stone") {
+      messages.push(joke("dig"));
+    } else if (ORES.includes(tile)) {
+      state.found[tile]++;
+      state.score += POINTS[tile];
+      messages.push(joke(tile));
+    } else if (tile === "tnt") {
+      state.tnts.push({ x, y, timer: 3 });
+      messages.push("You poked the TNT. It's hissing… RUN! 💣");
+    } else if (tile === "chest") {
+      let roll = Math.random() * SURPRISES.reduce((sum, s) => sum + s.weight, 0);
+      const surprise = SURPRISES.find((s) => (roll -= s.weight) < 0) || SURPRISES[0];
+      surprise.open(messages);
+    }
+  }
+
+  function bonk(c, dx, dy, messages) {
+    c.hp--;
+    if (c.hp <= 0) {
+      state.creepers = state.creepers.filter((other) => other !== c);
+      messages.push(joke("bonk", c.name));
+      return;
+    }
+    // Still standing: knock it back and stun it
+    c.fuse = false;
+    c.stun = 1;
+    if (isInside(c.x + dx, c.y + dy) && isFree(c.x + dx, c.y + dy)) { c.x += dx; c.y += dy; }
+    messages.push(`BONK! ${c.name} flew backwards, still sparkly and VERY angry. One more hit!`);
+  }
+
+  function endTurn(messages) {
+    state.turn++;
+    if (state.speedTurns > 0 && --state.speedTurns === 0) messages.push("Your speedy pickaxe wore off.");
+
+    for (const t of [...state.tnts]) {
+      if (!state.tnts.includes(t)) continue;
+      if (--t.timer <= 0) explode(t.x, t.y, 1, "TNT", messages, () => 1);
+    }
+
+    creepersTurn(messages);
+
+    if (state.discoTurns > 0 && --state.discoTurns === 0) messages.push("The disco is over. The creepers remember they hate you.");
+
+    if (state.status === "play" && state.turn % SPAWN_EVERY === 0 && state.creepers.length < MAX_CREEPERS) {
+      const c = spawnCreeper(6);
+      if (c) messages.push(joke("spawn", c.name));
+    }
+
+    if (state.status === "play" && ORES.every((ore) => state.found[ore] === LEVEL[ore])) state.status = "won";
+    state.message = messages.join(" ");
+    render();
+    if (state.status !== "play") showEnd();
+  }
+
+  function creepersTurn(messages) {
+    for (const c of [...state.creepers]) {
+      if (state.status !== "play") return;
+      if (!state.creepers.includes(c)) continue; // already blown up
+      if (state.discoTurns > 0) { c.fuse = false; continue; }
+      if (c.stun > 0) { c.stun--; continue; }
+      if (c.fuse) {
+        if (reach(c, state.player) <= (c.charged ? 2 : 1)) { creeperBoom(c, messages); continue; }
+        c.fuse = false;
+      }
+      stepToward(c, messages);
+      if (reach(c, state.player) <= 1) {
+        c.fuse = true;
+        messages.push(joke(c.charged ? "chargedHiss" : "hiss", c.name));
+      }
+    }
+  }
+
+  function creeperBoom(c, messages) {
+    const radius = c.charged ? 2 : 1;
+    // A charged creeper hits for 2 up close, 1 a step further out
+    explode(c.x, c.y, radius, c.name, messages, (d) => (c.charged && d <= 1 ? 2 : 1), c);
+  }
+
+  // Blow up everything around (cx, cy): stone breaks, TNT catches fire, creepers get caught
+  function explode(cx, cy, radius, source, messages, damageAt, creeper = null) {
+    state.tnts = state.tnts.filter((t) => !(t.x === cx && t.y === cy));
+    if (creeper) state.creepers = state.creepers.filter((c) => c !== creeper);
+    booms.push({ x: cx, y: cy, radius, until: Date.now() + 600 });
+
+    for (let y = cy - radius; y <= cy + radius; y++)
+      for (let x = cx - radius; x <= cx + radius; x++) {
+        if (!isInside(x, y)) continue;
+        if (state.grid[y][x] === "stone") state.grid[y][x] = "air";
+        if (state.grid[y][x] === "tnt") { state.grid[y][x] = "air"; state.tnts.push({ x, y, timer: 1 }); }
+      }
+
+    const caught = state.creepers.filter((c) => reach(c, { x: cx, y: cy }) <= radius);
+    if (caught.length) {
+      state.creepers = state.creepers.filter((c) => !caught.includes(c));
+      messages.push(`${caught.map((c) => c.name).join(" and ")} got blown away by ${source === "TNT" ? "the TNT" : source}!`);
+    }
+
+    const d = reach(state.player, { x: cx, y: cy });
+    if (d <= radius) {
+      hurt(damageAt(d), messages, source === "TNT" ? "KABLAM! You were too close to the TNT." : joke("boom", source));
+    } else {
+      messages.push(source === "TNT" ? "KABLAM! The TNT went off. Nice and far away." : `${source} exploded… and missed you!`);
+    }
+  }
+
+  // Creepers chase you through open cave. If there's no open path, they dig toward you.
+  function stepToward(c, messages) {
+    const { grid, player } = state;
+    const walkable = (x, y) => (grid[y][x] === "air" || grid[y][x] === "heart") && !tntAt(x, y);
+    const distance = { [player.x + "," + player.y]: 0 };
+    const queue = [player];
+    while (queue.length) {
+      const p = queue.shift();
+      for (const [dx, dy] of DIRS) {
+        const x = p.x + dx, y = p.y + dy, key = x + "," + y;
+        if (!(key in distance) && walkable(x, y)) { distance[key] = distance[p.x + "," + p.y] + 1; queue.push({ x, y }); }
+      }
+    }
+
+    const here = distance[c.x + "," + c.y];
+    if (here !== undefined) {
+      let best = null, bestDist = here;
+      for (const [dx, dy] of DIRS) {
+        const x = c.x + dx, y = c.y + dy, d = distance[x + "," + y];
+        if (d !== undefined && d > 0 && d < bestDist && !creeperAt(x, y)) { best = { x, y }; bestDist = d; }
+      }
+      if (best) { c.x = best.x; c.y = best.y; }
+      return;
+    }
+
+    // No open path: head straight for you, digging stone every 3rd turn
+    const options = DIRS
+      .map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy }))
+      .filter((p) => dist(p, player) < dist(c, player));
+    for (const p of shuffle(options)) {
+      if (isFree(p.x, p.y)) { c.x = p.x; c.y = p.y; return; }
+      if (grid[p.y][p.x] === "stone" && state.turn % 3 === 0) {
+        grid[p.y][p.x] = "air";
+        if (dist(c, player) <= 4) messages.push(joke("dig_creeper"));
+        return;
+      }
+    }
+  }
+
+  function spawnCreeper(minDist, name) {
+    const spots = [];
+    for (let y = 1; y < ROWS - 1; y++)
+      for (let x = 1; x < COLS - 1; x++)
+        if (state.grid[y][x] === "air" && isFree(x, y) && dist({ x, y }, state.player) >= minDist) spots.push({ x, y });
+    if (!spots.length) return null;
+    const p = pick(spots);
+    if (!name) {
+      name = NAMES.find((n) => !state.usedNames.includes(n)) || pick(NAMES) + " Jr.";
+      state.usedNames.push(name);
+    }
+    const c = makeCreeper(p.x, p.y, name);
+    state.creepers.push(c);
+    return c;
+  }
+
+  function teleport(messages) {
+    const spots = [];
+    for (let y = 1; y < ROWS - 1; y++)
+      for (let x = 1; x < COLS - 1; x++)
+        if (state.grid[y][x] === "air" && isFree(x, y) && state.creepers.every((c) => reach(c, { x, y }) >= 4)) spots.push({ x, y });
+    if (!spots.length) { messages.push("An ender pearl! You threw it… and it bounced back. Nowhere safe to go."); return; }
+    const p = pick(spots);
+    state.player.x = p.x; state.player.y = p.y;
+    messages.push("🟣 An ender pearl! WHOOSH, you teleported somewhere else in the cave.");
+  }
+
+  function showEnd() {
+    const overlay = document.getElementById("overlay");
+    const won = state.status === "won";
+    overlay.className = "overlay " + (won ? "win" : "lose");
+    document.getElementById("overlayTitle").textContent = won ? `${PLAYER_NAME.toUpperCase()} WINS` : "GAME OVER";
+    document.getElementById("overlayText").textContent = won
+      ? `Every ore mined in ${state.turn} turns. Score: ${state.score}. The creepers have called an emergency meeting.`
+      : `Score: ${state.score}. ${PLAYER_NAME} has been turned into confetti. 🎉 Try again!`;
+    overlay.hidden = false;
+    document.getElementById("playAgain").focus();
+  }
+
+  // ---------- Drawing ----------
+
+  function noise(a, b) {
+    let h = (a * 374761393 + b * 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  const TEXTURES = {
+    stone: ["#7f7f7f", "#6b6b6b", "#939393"],
+    bedrock: ["#3a3a3a", "#222222", "#5a5a5a"],
+    air: ["#28222a", "#201b22", "#332c35"],
+    lava: ["#e8590c", "#ff8c1a", "#ffd23f"],
+  };
+
+  function texture(g, ox, oy, colors, sx, sy) {
+    for (let py = 0; py < 8; py++)
+      for (let px = 0; px < 8; px++) {
+        const v = noise(sx * 8 + px, sy * 8 + py);
+        g.fillStyle = v < 0.18 ? colors[1] : v > 0.86 ? colors[2] : colors[0];
+        g.fillRect(ox + px * 2, oy + py * 2, 2, 2);
+      }
+  }
+
+  function sprite(g, ox, oy, rows, palette) {
+    rows.forEach((row, py) => [...row].forEach((ch, px) => {
+      if (palette[ch]) { g.fillStyle = palette[ch]; g.fillRect(ox + px * 2, oy + py * 2, 2, 2); }
+    }));
+  }
+
+  const ORE_SHAPE = ["........", ".oo.....", ".oO...o.", ".....oO.", "..o.....", ".oO...oo", "......o.", "...o...."];
+  const ORE_COLORS = {
+    gold: { o: "#f7d33b", O: "#fff3a0" },
+    copper: { o: "#e07a3c", O: "#f7b07a" },
+    diamond: { o: "#4fd9d0", O: "#c8fffb" },
+  };
+  const HEART = ["........", ".rr..rr.", "rRrrrrrr", "rrrrrrrr", ".rrrrrr.", "..rrrr..", "...rr...", "........"];
+  const TNT = ["RRRRRRRR", "rRrRrRrR", "WWWWWWWW", "WkkkWkWk", "WWkWWkkW", "WWWWWWWW", "rRrRrRrR", "RRRRRRRR"];
+  const CHEST = [".bbbbbb.", "bBBBBBBb", "bBBBBBBb", "kkkYYkkk", "bBBYYBBb", "bBBBBBBb", "bBBBBBBb", ".bbbbbb."];
+  const CREEPER = ["GgGGgGGg", "GGgGGGgG", "GKKGGKKG", "GKKGGKKG", "GGgKKGGg", "GgKKKKGG", "GGKKKKgG", "GgKGGKGG"];
+  const STEVE = ["HHHHHHHH", "HHHHHHHH", "HSSSSSSH", "SSSSSSSS", "SWBSSBWS", "SSSNNSSS", "SSMSSMSS", "SSMMMMSS"];
+  const PALETTES = {
+    heart: { r: "#e8333a", R: "#ff9a9a" },
+    tnt: { R: "#d8322a", r: "#a51f1a", W: "#f2f2f2", k: "#1a1a1a" },
+    tntLit: { R: "#ffffff", r: "#ffd0d0", W: "#ffffff", k: "#ff3a2a" },
+    chest: { b: "#6b4420", B: "#9c6b30", k: "#3b2410", Y: "#f7d33b" },
+    creeper: { G: "#5fbf4a", g: "#478f37", K: "#141414" },
+    flash: { G: "#ffffff", g: "#e6e6e6", K: "#555555" },
+    charged: { G: "#5fbf4a", g: "#3aa0c8", K: "#0a1a2a" },
+    player: { H: "#3b2a1a", S: "#c99a74", W: "#ffffff", B: "#4b3bbf", N: "#9b6a4a", M: "#6b3f2a" },
+  };
+
+  // Draws one thing (block or character) at pixel position (ox, oy)
+  function drawThing(g, kind, ox, oy, sx = 0, sy = 0) {
+    if (kind === "lava") return texture(g, ox, oy, TEXTURES.lava, sx + (blink ? 3 : 0), sy);
+    if (TEXTURES[kind]) return texture(g, ox, oy, TEXTURES[kind], sx, sy);
+    if (ORES.includes(kind)) { texture(g, ox, oy, TEXTURES.stone, sx, sy); return sprite(g, ox, oy, ORE_SHAPE, ORE_COLORS[kind]); }
+    if (kind === "tnt") return sprite(g, ox, oy, TNT, PALETTES.tnt);
+    texture(g, ox, oy, TEXTURES.air, sx, sy);
+    if (kind === "heart") sprite(g, ox, oy, HEART, PALETTES.heart);
+    if (kind === "chest") sprite(g, ox, oy, CHEST, PALETTES.chest);
+    if (kind === "creeper") sprite(g, ox, oy, CREEPER, PALETTES.creeper);
+    if (kind === "charged") { chargedAura(g, ox, oy); sprite(g, ox, oy, CREEPER, PALETTES.charged); }
+    if (kind === "player") sprite(g, ox, oy, STEVE, PALETTES.player);
+  }
+
+  function chargedAura(g, ox, oy) {
+    g.fillStyle = blink ? "#5ad8ff" : "#2a7aa8";
+    g.fillRect(ox, oy, TILE, 1); g.fillRect(ox, oy + TILE - 1, TILE, 1);
+    g.fillRect(ox, oy, 1, TILE); g.fillRect(ox + TILE - 1, oy, 1, TILE);
+  }
+
+  function render() {
+    const { grid, player, creepers } = state;
+    for (let y = 0; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++) drawThing(ctx, grid[y][x], x * TILE, y * TILE, x, y);
+
+    state.tnts.forEach((t) => {
+      sprite(ctx, t.x * TILE, t.y * TILE, TNT, blink ? PALETTES.tntLit : PALETTES.tnt);
+      ctx.fillStyle = "#ffd23f";
+      ctx.font = "bold 9px monospace";
+      ctx.fillText(t.timer, t.x * TILE + 5, t.y * TILE + 2 + 9);
+    });
+
+    creepers.forEach((c) => {
+      const ox = c.x * TILE, oy = c.y * TILE;
+      if (c.charged) chargedAura(ctx, ox, oy);
+      sprite(ctx, ox, oy, CREEPER, c.fuse && blink ? PALETTES.flash : c.charged ? PALETTES.charged : PALETTES.creeper);
+      if (c.fuse) { // the "!" warning
+        ctx.fillStyle = "#ff5a3c";
+        ctx.fillRect(ox + 7, Math.max(oy - 6, 0), 2, 4);
+      }
+      if (state.discoTurns > 0) { // dancing creepers bob up and down
+        ctx.fillStyle = `hsl(${(Date.now() / 5 + c.x * 40) % 360} 90% 60%)`;
+        ctx.fillRect(ox + 2, oy + (blink ? 0 : 2), 12, 2);
+      }
+    });
+
+    sprite(ctx, player.x * TILE, player.y * TILE, STEVE, PALETTES.player);
+    if (state.shield) {
+      ctx.strokeStyle = "#5ad8ff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(player.x * TILE + 0.5, player.y * TILE + 0.5, TILE - 1, TILE - 1);
+    }
+
+    booms = booms.filter((b) => Date.now() < b.until);
+    booms.forEach((b) => {
+      ctx.fillStyle = blink ? "rgba(255,255,255,0.7)" : "rgba(255,170,40,0.6)";
+      ctx.fillRect((b.x - b.radius) * TILE, (b.y - b.radius) * TILE, TILE * (b.radius * 2 + 1), TILE * (b.radius * 2 + 1));
+    });
+
+    if (state.discoTurns > 0) {
+      ctx.fillStyle = `hsla(${(Date.now() / 3) % 360}, 90%, 60%, 0.2)`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    const powers = [];
+    if (state.shield) powers.push("Shield");
+    if (state.speedTurns > 0) powers.push(`Speed ${state.speedTurns}`);
+    if (state.discoTurns > 0) powers.push(`Disco ${state.discoTurns}`);
+    document.getElementById("hearts").textContent = "♥".repeat(Math.max(state.hearts, 0)) || "—";
+    document.getElementById("powers").textContent = powers.join(" · ");
+    document.getElementById("goldCount").textContent = `Gold ${state.found.gold}/${LEVEL.gold}`;
+    document.getElementById("copperCount").textContent = `Copper ${state.found.copper}/${LEVEL.copper}`;
+    document.getElementById("diamondCount").textContent = `Diamond ${state.found.diamond}/${LEVEL.diamond}`;
+    document.getElementById("score").textContent = `Score ${state.score}`;
+    document.getElementById("message").textContent = state.message;
+  }
+
+  // Picture key under the game
+  const keyList = document.getElementById("keyList");
+  KEY.forEach(([kind, text]) => {
+    const li = document.createElement("li");
+    const icon = document.createElement("canvas");
+    icon.width = TILE; icon.height = TILE;
+    drawThing(icon.getContext("2d"), kind, 0, 0, 3, 5);
+    const label = document.createElement("span");
+    label.textContent = text;
+    li.append(icon, label);
+    keyList.append(li);
+  });
+
+  // ---------- Controls ----------
+
+  const KEYS = {
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
+  };
+  document.addEventListener("keydown", (event) => {
+    const dir = KEYS[event.key] || KEYS[event.key.toLowerCase()];
+    if (!dir) return;
+    event.preventDefault();
+    move(...dir);
+  });
+  [["up", 0, -1], ["down", 0, 1], ["left", -1, 0], ["right", 1, 0]].forEach(([id, dx, dy]) =>
+    document.getElementById(id).addEventListener("click", () => move(dx, dy)));
+  document.getElementById("playAgain").addEventListener("click", newGame);
+  document.getElementById("newWorld").addEventListener("click", newGame);
+
+  setInterval(() => { blink = !blink; render(); }, 300);
+  newGame();
+</script>
+</body>
+</html>
