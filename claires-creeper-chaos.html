@@ -60,6 +60,7 @@
   .hud .level { color: var(--pink); }
   .hud .hearts { color: var(--danger); letter-spacing: 2px; }
   .hud .powers { color: var(--charged); }
+  .hud .hunger { letter-spacing: -1px; }
   .hud #score { flex-basis: 100%; overflow-wrap: anywhere; }
 
   .stage { position: relative; }
@@ -111,6 +112,7 @@
   <div class="hud" aria-live="polite">
     <span class="level" id="levelLabel"></span>
     <span class="hearts" id="hearts"></span>
+    <span class="hunger" id="hunger"></span>
     <span class="powers" id="powers"></span>
     <span id="oreCounts"></span>
     <span id="score"></span>
@@ -150,6 +152,9 @@
   const WINNERS = "Claire and Xander";
   const LAST_LEVEL = 8;
   const START_HEARTS = 4;
+  const MAX_HUNGER = 10;
+  const HUNGER_EVERY = 6; // you lose 1 food every 6 turns...
+  const FOOD_FILL = 5;    // ...and a drumstick gives back 5
   const SUIT_AT_POINTS = 10n; // score this many points and you get the Booba Root Suit (it never breaks)
   // 1 million × 1 billion × 1 trillion × 1 quintillion = 10 to the power of 45
   const RAINBOW_POINTS = 10n ** 45n;
@@ -166,6 +171,7 @@
       diamond: 1,
       rainbow: level === LAST_LEVEL ? 2 : 0,
       hearts: level >= 5 ? 3 : 2,
+      food: 3,
       lava: 1 + Math.floor(level / 2),
       tnt: 3,
       chests: 4,
@@ -189,6 +195,9 @@
     diamond: ["+50 DIAMOND! You screamed so loud the bats moved out.", `+50 DIAMOND! ${PLAYER_NAME} does a little dance.`],
     rainbow: ["🌈 RAINBOW ORE!!! +1 MILLION BILLION TRILLION QUINTILLION POINTS!!!",
       "🌈 RAINBOW ORE! That's 1 million billion trillion quintillion points. The calculator exploded."],
+    food: ["Nom nom nom! +5 food.", "Delicious cave chicken! +5 food.", "You ate a drumstick in one bite. Impressive. +5 food."],
+    hungry: ["Your tummy is rumbling. Find a drumstick!", "You're getting hungry… so hungry you could eat a creeper."],
+    starving: ["You're STARVING!", "No food left! Your tummy is eating itself!"],
     heart: ["Extra heart! You ate a suspicious cave sandwich.", "Extra heart! It was just lying there. Lucky!"],
     lava: ["Ouch, lava! Your toes are toast.", "HOT HOT HOT!", "Lava is not a hot tub."],
     bedrock: ["That's bedrock. You hit it and it laughed at you.", "Bedrock can't be dug. Not even with your teeth. (Maybe with a Booba Root Suit…)"],
@@ -212,7 +221,7 @@
   const SURPRISES = [
     { weight: 2, open: (m) => { state.shield = true; m.push("🛡 A shield! It will block the next thing that hurts you."); } },
     { weight: 2, open: (m) => { state.speedTurns = 20; m.push("⛏ A speedy pickaxe! For 20 turns you dig AND move in one go."); } },
-    { weight: 2, open: (m) => { state.hearts += 8; m.push("🎂 CAKE! +8 hearts! The cake was not a lie."); } },
+    { weight: 2, open: (m) => { state.hearts += 8; state.hunger = MAX_HUNGER; m.push("🎂 CAKE! +8 hearts and a full tummy! The cake was not a lie."); } },
     { weight: 1, open: (m) => { state.hearts += 2; m.push("🍎 A GOLDEN APPLE! +2 hearts. Fancy."); } },
     { weight: 1, open: (m) => teleport(m) },
     { weight: 2, open: (m) => {
@@ -224,7 +233,8 @@
       : putOnSuit(m) },
     { weight: 1, open: (m) => { state.discoTurns = 6; state.creepers.forEach((c) => (c.fuse = false));
       m.push("🪩 DISCO TIME! The creepers are too busy dancing to chase you for 6 turns."); } },
-    { weight: 1, open: (m) => { state.score += 1n; m.push("🐔 A chicken pops out, says BAWK, and runs off. +1 point for the chicken."); } },
+    { weight: 1, open: (m) => { state.score += 1n; state.hunger = Math.min(MAX_HUNGER, state.hunger + 3);
+      m.push("🐔 A chicken pops out, says BAWK, drops a drumstick, and runs off. +1 point and +3 food."); } },
   ];
 
   const KEY = [
@@ -233,6 +243,7 @@
     ["diamond", "Diamond. Dig it for 50 points"],
     ["rainbow", "RAINBOW ORE (level 8 only!). 1 million billion trillion quintillion points"],
     ["heart", "Heart. Walk over it for an extra life"],
+    ["food", "Drumstick. Walk over it to fill your hunger bar. Your hunger goes down as you play, and when it runs out you lose hearts!"],
     ["chest", "Chest. Dig it for a surprise… but some are CREEPER CHESTS that explode!"],
     ["tnt", "TNT. Dig it to light it, then RUN. It blows up 3 turns later and takes out creepers too"],
     ["suit", `Booba Root Suit. Goes on by itself when you score ${SUIT_AT_POINTS} points. Never breaks! Press E or the suit button to take it off and put it on. While it's on: infinite hearts, smash bedrock, never hungry, and creepers think you're a tree stump`],
@@ -245,6 +256,7 @@
 
   const COLS = 14, ROWS = 10, TILE = 16;
   const ORES = ["gold", "copper", "diamond", "rainbow"];
+  const OPEN = ["air", "heart", "food"]; // tiles you (and creepers) can walk on
   const DIGGABLE = ["stone", "gold", "copper", "diamond", "rainbow", "tnt", "chest"];
   const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const canvas = document.getElementById("cave");
@@ -330,6 +342,11 @@
       if (!p) return null;
       grid[p.y][p.x] = "heart";
     }
+    for (let i = 0; i < cfg.food; i++) {
+      const p = open.pop();
+      if (!p) return null;
+      grid[p.y][p.x] = "food";
+    }
 
     // Make sure lava and bedrock don't wall off anything you need
     const seen = new Set([player.x + "," + player.y]);
@@ -343,7 +360,7 @@
     }
     for (let y = 0; y < ROWS; y++)
       for (let x = 0; x < COLS; x++)
-        if ((ORES.includes(grid[y][x]) || grid[y][x] === "heart") && !seen.has(x + "," + y)) return null;
+        if ((ORES.includes(grid[y][x]) || grid[y][x] === "heart" || grid[y][x] === "food") && !seen.has(x + "," + y)) return null;
     if (creepers.some((c) => !seen.has(c.x + "," + c.y))) return null;
 
     return { grid, player, creepers };
@@ -358,6 +375,7 @@
       cfg,
       level,
       hearts,
+      hunger: MAX_HUNGER,
       score,
       levelStartScore: score,
       shield: false,
@@ -389,7 +407,7 @@
   const tntAt = (x, y) => state.tnts.find((t) => t.x === x && t.y === y);
   const isFree = (x, y) => {
     const t = state.grid[y][x];
-    return (t === "air" || t === "heart") && !creeperAt(x, y) && !tntAt(x, y) &&
+    return OPEN.includes(t) && !creeperAt(x, y) && !tntAt(x, y) &&
       !(x === state.player.x && y === state.player.y);
   };
 
@@ -456,6 +474,11 @@
       if (state.speedTurns > 0 && grid[y][x] === "air" && !tntAt(x, y)) { player.x = x; player.y = y; }
     } else {
       player.x = x; player.y = y;
+      if (tile === "food") {
+        grid[y][x] = "air";
+        state.hunger = Math.min(MAX_HUNGER, state.hunger + FOOD_FILL);
+        messages.push(joke("food"));
+      }
       if (tile === "heart") {
         grid[y][x] = "air";
         state.hearts++;
@@ -512,6 +535,18 @@
     }
 
     creepersTurn(messages);
+
+    // Hunger: the Booba Root Suit keeps you full. Otherwise it slowly goes down, and an empty tummy costs hearts.
+    if (state.suitOn) {
+      state.hunger = MAX_HUNGER;
+    } else if (state.status === "play" && state.turn % HUNGER_EVERY === 0) {
+      if (state.hunger > 0) {
+        state.hunger--;
+        if (state.hunger === 3) messages.push(joke("hungry"));
+      } else {
+        hurt(1, messages, joke("starving"));
+      }
+    }
 
     if (state.discoTurns > 0 && --state.discoTurns === 0) messages.push("The disco is over. The creepers remember they hate you.");
 
@@ -589,7 +624,7 @@
   // Creepers chase you through open cave. In later levels, they dig toward you if there's no path.
   function stepToward(c, messages) {
     const { grid, player } = state;
-    const walkable = (x, y) => (grid[y][x] === "air" || grid[y][x] === "heart") && !tntAt(x, y);
+    const walkable = (x, y) => OPEN.includes(grid[y][x]) && !tntAt(x, y);
     const distance = { [player.x + "," + player.y]: 0 };
     const queue = [player];
     while (queue.length) {
@@ -733,11 +768,13 @@
   const TNT = ["RRRRRRRR", "rRrRrRrR", "WWWWWWWW", "WkkkWkWk", "WWkWWkkW", "WWWWWWWW", "rRrRrRrR", "RRRRRRRR"];
   const CHEST = [".bbbbbb.", "bBBBBBBb", "bBBBBBBb", "kkkYYkkk", "bBBYYBBb", "bBBBBBBb", "bBBBBBBb", ".bbbbbb."];
   const CREEPER_CHEST = [".bbbbbb.", "bBBBBBBb", "bKKBBKKb", "kkkKKkkk", "bBKKKKBb", "bBKBBKBb", "bBBBBBBb", ".bbbbbb."];
+  const DRUMSTICK = ["....bb..", "...bBBb.", "..bBBBb.", ".bBBBb..", ".bBBb...", "..WW....", ".W.W....", "W......."];
   const CREEPER = ["GgGGgGGg", "GGgGGGgG", "GKKGGKKG", "GKKGGKKG", "GGgKKGGg", "GgKKKKGG", "GGKKKKgG", "GgKGGKGG"];
   const ROOT_SUIT = [".LlLLlL.", "LlLLLlLL", ".bbbbbb.", "bBWkBWkb", "bBBBBBBb", "bBBbBBBb", "bBBBBbBb", "brrbbrrb"];
   const STEVE = ["HHHHHHHH", "HHHHHHHH", "HSSSSSSH", "SSSSSSSS", "SWBSSBWS", "SSSNNSSS", "SSMSSMSS", "SSMMMMSS"];
   const PALETTES = {
     heart: { r: "#e8333a", R: "#ff9a9a" },
+    food: { b: "#8a4a1c", B: "#c8763a", W: "#f2eadf" },
     tnt: { R: "#d8322a", r: "#a51f1a", W: "#f2f2f2", k: "#1a1a1a" },
     tntLit: { R: "#ffffff", r: "#ffd0d0", W: "#ffffff", k: "#ff3a2a" },
     chest: { b: "#6b4420", B: "#9c6b30", k: "#3b2410", Y: "#f7d33b" },
@@ -775,6 +812,7 @@
     if (kind === "tnt") return sprite(g, ox, oy, TNT, PALETTES.tnt);
     texture(g, ox, oy, TEXTURES.air, sx, sy);
     if (kind === "heart") sprite(g, ox, oy, HEART, PALETTES.heart);
+    if (kind === "food") sprite(g, ox, oy, DRUMSTICK, PALETTES.food);
     if (kind === "chest") sprite(g, ox, oy, CHEST, PALETTES.chest);
     if (kind === "creeper") sprite(g, ox, oy, CREEPER, PALETTES.creeper);
     if (kind === "charged") { chargedAura(g, ox, oy); sprite(g, ox, oy, CREEPER, PALETTES.charged); }
@@ -840,6 +878,7 @@
     if (cfg.rainbow) ores.push(`Rainbow ${found.rainbow}/${cfg.rainbow}`);
 
     document.getElementById("levelLabel").textContent = `Level ${state.level}/${LAST_LEVEL}`;
+    document.getElementById("hunger").textContent = "🍗".repeat(state.hunger) + "·".repeat(MAX_HUNGER - state.hunger);
     document.getElementById("hearts").textContent = state.suitOn ? "♥ ∞" : "♥".repeat(Math.max(state.hearts, 0)) || "—";
     document.getElementById("powers").textContent = powers.join(" · ");
     document.getElementById("oreCounts").textContent = ores.join("  ");
