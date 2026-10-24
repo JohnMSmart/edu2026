@@ -186,6 +186,8 @@
     } },
     { weight: 1, open: (m) => { state.discoTurns = 6; state.creepers.forEach((c) => (c.fuse = false));
       m.push("🪩 DISCO TIME! The creepers are too busy dancing to chase you for 6 turns."); } },
+    { weight: 2, open: (m) => { state.suitTurns = 10; state.creepers.forEach((c) => (c.fuse = false));
+      m.push("🌳 The BOOBA ROOT SUIT! You look exactly like a tree stump. Creepers will walk right past you for 10 turns."); } },
     { weight: 1, open: (m) => { state.score += 1; m.push("🐔 A chicken pops out, says BAWK, and runs off. +1 point for the chicken."); } },
   ];
 
@@ -196,6 +198,7 @@
     ["heart", "Heart. Walk over it for an extra life"],
     ["chest", "Mystery chest. Dig it open for a surprise… good or bad!"],
     ["tnt", "TNT. Dig it to light it, then RUN. It blows up 3 turns later and takes out creepers too"],
+    ["suit", "Booba Root Suit (found in chests). Creepers think you're a tree stump for 10 turns"],
     ["lava", "Lava. Touching it costs a heart"],
     ["creeper", "Creeper. Moves every turn, can dig through stone, and explodes if it stays next to you"],
     ["charged", "Charged creeper (Sparky). Needs 2 bonks and has a giant 2-heart explosion"],
@@ -309,6 +312,7 @@
       shield: false,
       speedTurns: 0,
       discoTurns: 0,
+      suitTurns: 0,
       tnts: [],
       turn: 0,
       found: { gold: 0, copper: 0, diamond: 0 },
@@ -421,6 +425,7 @@
     creepersTurn(messages);
 
     if (state.discoTurns > 0 && --state.discoTurns === 0) messages.push("The disco is over. The creepers remember they hate you.");
+    if (state.suitTurns > 0 && --state.suitTurns === 0) messages.push("Your Booba Root Suit fell apart. The creepers can see you again!");
 
     if (state.status === "play" && state.turn % SPAWN_EVERY === 0 && state.creepers.length < MAX_CREEPERS) {
       const c = spawnCreeper(6);
@@ -439,6 +444,7 @@
       if (!state.creepers.includes(c)) continue; // already blown up
       if (state.discoTurns > 0) { c.fuse = false; continue; }
       if (c.stun > 0) { c.stun--; continue; }
+      if (state.suitTurns > 0) { c.fuse = false; wander(c); continue; }
       if (c.fuse) {
         if (reach(c, state.player) <= (c.charged ? 2 : 1)) { creeperBoom(c, messages); continue; }
         c.fuse = false;
@@ -523,6 +529,12 @@
     }
   }
 
+  // While you're a tree stump, creepers just stroll around
+  function wander(c) {
+    const options = DIRS.map(([dx, dy]) => ({ x: c.x + dx, y: c.y + dy })).filter((p) => isFree(p.x, p.y));
+    if (options.length) { const p = pick(options); c.x = p.x; c.y = p.y; }
+  }
+
   function spawnCreeper(minDist, name) {
     const spots = [];
     for (let y = 1; y < ROWS - 1; y++)
@@ -602,6 +614,7 @@
   const TNT = ["RRRRRRRR", "rRrRrRrR", "WWWWWWWW", "WkkkWkWk", "WWkWWkkW", "WWWWWWWW", "rRrRrRrR", "RRRRRRRR"];
   const CHEST = [".bbbbbb.", "bBBBBBBb", "bBBBBBBb", "kkkYYkkk", "bBBYYBBb", "bBBBBBBb", "bBBBBBBb", ".bbbbbb."];
   const CREEPER = ["GgGGgGGg", "GGgGGGgG", "GKKGGKKG", "GKKGGKKG", "GGgKKGGg", "GgKKKKGG", "GGKKKKgG", "GgKGGKGG"];
+  const ROOT_SUIT = [".LlLLlL.", "LlLLLlLL", ".bbbbbb.", "bBWkBWkb", "bBBBBBBb", "bBBbBBBb", "bBBBBbBb", "brrbbrrb"];
   const STEVE = ["HHHHHHHH", "HHHHHHHH", "HSSSSSSH", "SSSSSSSS", "SWBSSBWS", "SSSNNSSS", "SSMSSMSS", "SSMMMMSS"];
   const PALETTES = {
     heart: { r: "#e8333a", R: "#ff9a9a" },
@@ -611,6 +624,7 @@
     creeper: { G: "#5fbf4a", g: "#478f37", K: "#141414" },
     flash: { G: "#ffffff", g: "#e6e6e6", K: "#555555" },
     charged: { G: "#5fbf4a", g: "#3aa0c8", K: "#0a1a2a" },
+    suit: { L: "#4f9a3a", l: "#6cbf3f", b: "#5a3a1c", B: "#7a5230", W: "#ffffff", k: "#1a1a1a", r: "#3b2410" },
     player: { H: "#3b2a1a", S: "#c99a74", W: "#ffffff", B: "#4b3bbf", N: "#9b6a4a", M: "#6b3f2a" },
   };
 
@@ -626,6 +640,7 @@
     if (kind === "creeper") sprite(g, ox, oy, CREEPER, PALETTES.creeper);
     if (kind === "charged") { chargedAura(g, ox, oy); sprite(g, ox, oy, CREEPER, PALETTES.charged); }
     if (kind === "player") sprite(g, ox, oy, STEVE, PALETTES.player);
+    if (kind === "suit") sprite(g, ox, oy, ROOT_SUIT, PALETTES.suit);
   }
 
   function chargedAura(g, ox, oy) {
@@ -660,7 +675,8 @@
       }
     });
 
-    sprite(ctx, player.x * TILE, player.y * TILE, STEVE, PALETTES.player);
+    if (state.suitTurns > 0) sprite(ctx, player.x * TILE, player.y * TILE, ROOT_SUIT, PALETTES.suit);
+    else sprite(ctx, player.x * TILE, player.y * TILE, STEVE, PALETTES.player);
     if (state.shield) {
       ctx.strokeStyle = "#5ad8ff";
       ctx.lineWidth = 1;
@@ -682,6 +698,7 @@
     if (state.shield) powers.push("Shield");
     if (state.speedTurns > 0) powers.push(`Speed ${state.speedTurns}`);
     if (state.discoTurns > 0) powers.push(`Disco ${state.discoTurns}`);
+    if (state.suitTurns > 0) powers.push(`Root Suit ${state.suitTurns}`);
     document.getElementById("hearts").textContent = "♥".repeat(Math.max(state.hearts, 0)) || "—";
     document.getElementById("powers").textContent = powers.join(" · ");
     document.getElementById("goldCount").textContent = `Gold ${state.found.gold}/${LEVEL.gold}`;
